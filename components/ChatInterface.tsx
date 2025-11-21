@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage } from '../types';
 import Spinner from './Spinner';
 import SendIcon from './icons/SendIcon';
-import RefreshIcon from './icons/RefreshIcon';
+import HomeIcon from './icons/HomeIcon';
 import SettingsIcon from './icons/SettingsIcon';
 
 interface ChatInterfaceProps {
@@ -15,12 +15,12 @@ interface ChatInterfaceProps {
     history: ChatMessage[];
     isQueryLoading: boolean;
     onSendMessage: (message: string) => void;
-    onNewChat: () => void;
+    onBack: () => void;
     exampleQuestions: string[];
     onOpenSettings: () => void;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ documentName, history, isQueryLoading, onSendMessage, onNewChat, exampleQuestions, onOpenSettings }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ documentName, history, isQueryLoading, onSendMessage, onBack, exampleQuestions, onOpenSettings }) => {
     const [query, setQuery] = useState('');
     const [currentSuggestion, setCurrentSuggestion] = useState('');
     const [modalContent, setModalContent] = useState<string | null>(null);
@@ -140,12 +140,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ documentName, history, is
                             <SettingsIcon />
                         </button>
                         <button
-                            onClick={onNewChat}
+                            onClick={onBack}
                             className="flex items-center px-4 py-2 bg-gem-blue hover:bg-blue-500 rounded-full text-white transition-colors flex-shrink-0"
-                            title="End current chat and start a new one"
+                            title="Back to Library"
                         >
-                            <RefreshIcon />
-                            <span className="ml-2 hidden sm:inline">New Chat</span>
+                            <HomeIcon />
+                            <span className="ml-2 hidden sm:inline">Library</span>
                         </button>
                     </div>
                 </div>

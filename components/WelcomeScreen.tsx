@@ -11,6 +11,7 @@ import CarIcon from './icons/CarIcon';
 import WashingMachineIcon from './icons/WashingMachineIcon';
 import TrashIcon from './icons/TrashIcon';
 import SettingsIcon from './icons/SettingsIcon';
+import { RagStore } from '../types';
 
 interface WelcomeScreenProps {
     onUpload: () => Promise<void>;
@@ -20,6 +21,9 @@ interface WelcomeScreenProps {
     isKeyReady: boolean;
     onSelectKey: () => Promise<void>;
     onOpenSettings: () => void;
+    savedStores: RagStore[];
+    onSelectStore: (store: RagStore) => void;
+    onDeleteStore: (storeName: string) => void;
 }
 
 const sampleDocuments = [
@@ -39,7 +43,18 @@ const sampleDocuments = [
     }
 ];
 
-const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onUpload, apiKeyError, files, setFiles, isKeyReady, onSelectKey, onOpenSettings }) => {
+const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ 
+    onUpload, 
+    apiKeyError, 
+    files, 
+    setFiles, 
+    isKeyReady, 
+    onSelectKey, 
+    onOpenSettings,
+    savedStores,
+    onSelectStore,
+    onDeleteStore
+}) => {
     const [isDragging, setIsDragging] = useState(false);
     const [loadingSample, setLoadingSample] = useState<string | null>(null);
 
@@ -109,7 +124,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onUpload, apiKeyError, fi
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4 sm:p-6 lg:p-8 relative">
+        <div className="flex flex-col items-center min-h-screen p-4 sm:p-6 lg:p-8 relative">
             <button 
                 onClick={onOpenSettings}
                 className="absolute top-4 right-4 p-2 rounded-full bg-gem-mist hover:bg-gem-mist/70 transition-colors text-gem-offwhite"
@@ -118,7 +133,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onUpload, apiKeyError, fi
                 <SettingsIcon />
             </button>
 
-            <div className="w-full max-w-3xl text-center">
+            <div className="w-full max-w-3xl text-center mt-8">
                 <h1 className="text-4xl sm:text-5xl font-bold mb-2">Chat With Your Document</h1>
                 <p className="text-gem-offwhite/70 mb-8">
                     Powered by <strong className="font-semibold text-gem-offwhite">FileSearch</strong>. Upload a manual or select example to see RAG in action.
@@ -192,7 +207,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onUpload, apiKeyError, fi
                     </div>
                 )}
                 
-                <div className="w-full max-w-xl mx-auto">
+                <div className="w-full max-w-xl mx-auto mb-12">
                     {files.length > 0 && (
                         <button 
                             onClick={handleConfirmUpload}
@@ -204,17 +219,48 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onUpload, apiKeyError, fi
                         </button>
                     )}
                 </div>
-                
-                <div className="flex items-center my-8">
-                    <div className="flex-grow border-t border-gem-mist"></div>
-                    <span className="flex-shrink mx-4 text-gem-offwhite/60">OR</span>
-                    <div className="flex-grow border-t border-gem-mist"></div>
-                </div>
 
-                <div className="text-left mb-4">
-                    <p className="text-gem-offwhite/80">Try an example:</p>
+                {/* Saved Stores / Library Section */}
+                {savedStores.length > 0 && (
+                    <div className="w-full max-w-2xl mx-auto mb-12">
+                         <div className="flex items-center mb-4">
+                            <div className="flex-grow border-t border-gem-mist"></div>
+                            <span className="flex-shrink mx-4 text-lg font-bold text-gem-offwhite">Your Library</span>
+                            <div className="flex-grow border-t border-gem-mist"></div>
+                        </div>
+                        <div className="space-y-3">
+                            {savedStores.map(store => (
+                                <div key={store.name} className="bg-gem-slate p-4 rounded-lg shadow-sm border border-gem-mist/50 flex items-center justify-between hover:border-gem-blue/30 transition-colors">
+                                    <div className="flex-grow overflow-hidden mr-4 text-left">
+                                        <h3 className="font-semibold text-gem-offwhite truncate" title={store.displayName}>{store.displayName}</h3>
+                                        <p className="text-xs text-gem-offwhite/50 truncate">ID: {store.name}</p>
+                                    </div>
+                                    <div className="flex items-center space-x-2 flex-shrink-0">
+                                        <button
+                                            onClick={() => onSelectStore(store)}
+                                            className="px-4 py-2 bg-gem-mist hover:bg-gem-blue hover:text-white text-gem-offwhite text-sm font-medium rounded-full transition-colors"
+                                        >
+                                            Chat
+                                        </button>
+                                        <button
+                                            onClick={() => onDeleteStore(store.name)}
+                                            className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                            title="Delete this chat history"
+                                        >
+                                            <TrashIcon />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Examples Section */}
+                <div className="text-left mb-4 w-full max-w-2xl mx-auto">
+                    <p className="text-gem-offwhite/80 font-semibold">Or try an example:</p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12 w-full max-w-2xl mx-auto">
                     {sampleDocuments.map(doc => (
                         <button
                             key={doc.name}

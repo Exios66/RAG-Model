@@ -5,7 +5,7 @@
 */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AppStatus, ChatMessage } from './types';
+import { AppStatus, ChatMessage, RagStore } from './types';
 import * as geminiService from './services/geminiService';
 import Spinner from './components/Spinner';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -23,6 +23,14 @@ declare global {
     }
 }
 
+const STORAGE_KEYS = {
+    API_KEY: 'gemini_api_key',
+    MODEL: 'gemini_model',
+    BASE_URL: 'gemini_base_url',
+    RAG_STORES: 'gemini_rag_stores',
+    CHAT_HISTORY_PREFIX: 'chat_history_'
+};
+
 const App: React.FC = () => {
     const [status, setStatus] = useState<AppStatus>(AppStatus.Initializing);
     const [isStudioKeySelected, setIsStudioKeySelected] = useState(false);
@@ -35,22 +43,25 @@ const App: React.FC = () => {
     const [exampleQuestions, setExampleQuestions] = useState<string[]>([]);
     const [documentName, setDocumentName] = useState<string>('');
     const [files, setFiles] = useState<File[]>([]);
-    const ragStoreNameRef = useRef(activeRagStoreName);
+    
+    // Saved Stores State
+    const [savedStores, setSavedStores] = useState<RagStore[]>(() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEYS.RAG_STORES);
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
     
     // Settings State
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [settings, setSettings] = useState({
-        apiKey: localStorage.getItem('gemini_api_key') || '',
-        model: localStorage.getItem('gemini_model') || 'gemini-2.5-flash',
-        baseUrl: localStorage.getItem('gemini_base_url') || ''
+        apiKey: localStorage.getItem(STORAGE_KEYS.API_KEY) || '',
+        model: localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-2.5-flash',
+        baseUrl: localStorage.getItem(STORAGE_KEYS.BASE_URL) || ''
     });
 
     // Combined key check: True if studio key is selected OR custom key is provided
     const isKeyReady = isStudioKeySelected || (!!settings.apiKey && settings.apiKey.length > 0);
-
-    useEffect(() => {
-        ragStoreNameRef.current = activeRagStoreName;
-    }, [activeRagStoreName]);
     
     const checkApiKey = useCallback(async () => {
         if (window.aistudio?.hasSelectedApiKey) {
@@ -81,21 +92,34 @@ const App: React.FC = () => {
         };
     }, [checkApiKey]);
 
+    // Removed auto-delete on unload to allow persistence
+    // useEffect(() => { ... }, []);
+
+    // Load chat history when active store changes
     useEffect(() => {
-        const handleUnload = () => {
-            if (ragStoreNameRef.current) {
-                geminiService.deleteRagStore(ragStoreNameRef.current)
-                    .catch(err => console.error("Error deleting RAG store on unload:", err));
+        if (activeRagStoreName) {
+            const historyKey = `${STORAGE_KEYS.CHAT_HISTORY_PREFIX}${activeRagStoreName}`;
+            const savedHistory = localStorage.getItem(historyKey);
+            if (savedHistory) {
+                try {
+                    setChatHistory(JSON.parse(savedHistory));
+                } catch (e) {
+                    console.error("Failed to parse chat history", e);
+                    setChatHistory([]);
+                }
+            } else {
+                setChatHistory([]);
             }
-        };
+        }
+    }, [activeRagStoreName]);
 
-        window.addEventListener('beforeunload', handleUnload);
-
-        return () => {
-            window.removeEventListener('beforeunload', handleUnload);
-        };
-    }, []);
-
+    // Save chat history when it changes
+    useEffect(() => {
+        if (activeRagStoreName && chatHistory.length > 0) {
+            const historyKey = `${STORAGE_KEYS.CHAT_HISTORY_PREFIX}${activeRagStoreName}`;
+            localStorage.setItem(historyKey, JSON.stringify(chatHistory));
+        }
+    }, [chatHistory, activeRagStoreName]);
 
     const handleError = (message: string, err: any) => {
         console.error(message, err);
@@ -128,9 +152,9 @@ const App: React.FC = () => {
     
     const handleSaveSettings = (newSettings: typeof settings) => {
         setSettings(newSettings);
-        localStorage.setItem('gemini_api_key', newSettings.apiKey);
-        localStorage.setItem('gemini_model', newSettings.model);
-        localStorage.setItem('gemini_base_url', newSettings.baseUrl);
+        localStorage.setItem(STORAGE_KEYS.API_KEY, newSettings.apiKey);
+        localStorage.setItem(STORAGE_KEYS.MODEL, newSettings.model);
+        localStorage.setItem(STORAGE_KEYS.BASE_URL, newSettings.baseUrl);
         
         // Clear error if they provided a key
         if (newSettings.apiKey) {
@@ -148,7 +172,6 @@ const App: React.FC = () => {
         setApiKeyError(null);
 
         try {
-            // Initialize with custom settings or fallback to environment defaults
             geminiService.initialize(settings.apiKey, settings.model, settings.baseUrl);
         } catch (err) {
             handleError("Initialization failed. Please check your API Key in settings.", err);
@@ -160,6 +183,19 @@ const App: React.FC = () => {
         setUploadProgress({ current: 0, total: totalSteps, message: "Creating document index..." });
 
         try {
+            // Generate document display name
+            let docName = '';
+            if (files.length === 1) {
+                docName = files[0].name;
+            } else if (files.length === 2) {
+                docName = `${files[0].name} & ${files[1].name}`;
+            } else {
+                docName = `${files.length} documents`;
+            }
+            // Add timestamp to differentiate duplicates
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const fullDisplayName = `${docName} (${timestamp})`;
+
             const storeName = `chat-session-${Date.now()}`;
             const ragStoreName = await geminiService.createRagStore(storeName);
             
@@ -183,18 +219,16 @@ const App: React.FC = () => {
             
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            let docName = '';
-            if (files.length === 1) {
-                docName = files[0].name;
-            } else if (files.length === 2) {
-                docName = `${files[0].name} & ${files[1].name}`;
-            } else {
-                docName = `${files.length} documents`;
-            }
-            setDocumentName(docName);
-
+            setDocumentName(fullDisplayName);
             setActiveRagStoreName(ragStoreName);
-            setChatHistory([]);
+            // chatHistory will be cleared/initialized via useEffect because key changes
+            
+            // Save the new store to the list
+            const newStore: RagStore = { name: ragStoreName, displayName: fullDisplayName };
+            const updatedStores = [newStore, ...savedStores];
+            setSavedStores(updatedStores);
+            localStorage.setItem(STORAGE_KEYS.RAG_STORES, JSON.stringify(updatedStores));
+
             setStatus(AppStatus.Chatting);
             setFiles([]);
         } catch (err) {
@@ -212,12 +246,45 @@ const App: React.FC = () => {
         }
     };
 
-    const handleEndChat = () => {
-        if (activeRagStoreName) {
-            geminiService.deleteRagStore(activeRagStoreName).catch(err => {
-                console.error("Failed to delete RAG store in background", err);
-            });
+    const handleSelectStore = (store: RagStore) => {
+        if (!isKeyReady) {
+            setApiKeyError("Please select your Gemini API Key or enter one in Settings.");
+            return;
         }
+        
+        // Re-init service just in case (e.g. settings changed)
+        geminiService.initialize(settings.apiKey, settings.model, settings.baseUrl);
+        
+        setActiveRagStoreName(store.name);
+        setDocumentName(store.displayName);
+        // History loads via useEffect
+        setStatus(AppStatus.Chatting);
+    };
+
+    const handleDeleteStore = async (storeName: string) => {
+        if (window.confirm("Are you sure you want to delete this chat history? This cannot be undone.")) {
+            // 1. Update UI
+            const updatedStores = savedStores.filter(s => s.name !== storeName);
+            setSavedStores(updatedStores);
+            localStorage.setItem(STORAGE_KEYS.RAG_STORES, JSON.stringify(updatedStores));
+            
+            // 2. Clear history from LS
+            localStorage.removeItem(`${STORAGE_KEYS.CHAT_HISTORY_PREFIX}${storeName}`);
+            
+            // 3. Delete from Gemini API (optional, but good for hygiene)
+            if (isKeyReady) {
+                 try {
+                    geminiService.initialize(settings.apiKey, settings.model, settings.baseUrl);
+                    await geminiService.deleteRagStore(storeName);
+                } catch (e) {
+                    console.warn("Could not delete remote store, likely already gone or auth error", e);
+                }
+            }
+        }
+    };
+
+    const handleBackToHome = () => {
+        // We simply reset the view to Welcome, preserving the store data
         setActiveRagStoreName(null);
         setChatHistory([]);
         setExampleQuestions([]);
@@ -270,6 +337,9 @@ const App: React.FC = () => {
                     isKeyReady={isKeyReady} 
                     onSelectKey={handleSelectKey}
                     onOpenSettings={() => setIsSettingsOpen(true)}
+                    savedStores={savedStores}
+                    onSelectStore={handleSelectStore}
+                    onDeleteStore={handleDeleteStore}
                  />;
             case AppStatus.Uploading:
                 let icon = null;
@@ -296,7 +366,7 @@ const App: React.FC = () => {
                     history={chatHistory}
                     isQueryLoading={isQueryLoading}
                     onSendMessage={handleSendMessage}
-                    onNewChat={handleEndChat}
+                    onBack={handleBackToHome}
                     exampleQuestions={exampleQuestions}
                     onOpenSettings={() => setIsSettingsOpen(true)}
                 />;
@@ -319,6 +389,9 @@ const App: React.FC = () => {
                     isKeyReady={isKeyReady} 
                     onSelectKey={handleSelectKey}
                     onOpenSettings={() => setIsSettingsOpen(true)}
+                    savedStores={savedStores}
+                    onSelectStore={handleSelectStore}
+                    onDeleteStore={handleDeleteStore}
                  />;
         }
     }
